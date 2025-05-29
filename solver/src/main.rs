@@ -8,9 +8,9 @@ use tokio::net::TcpStream;
 
 use runtime::tcp_utils;
 use runtime::types::{
-    Bid, DEFAULT_BID_SUBMISSION_PORT, DEFAULT_FULFILLMENT_PORT, DEFAULT_ORDER_BROADCAST_PORT,
-    DEFAULT_SEQUENCER_HOST, SequencerToSolverMessage, SolverId, SolverToSequencerMessage,
-    current_timestamp_secs,
+    current_timestamp_secs, Bid, SequencerToSolverMessage, SolverId, SolverToSequencerMessage,
+    DEFAULT_BID_SUBMISSION_PORT, DEFAULT_FULFILLMENT_PORT, DEFAULT_ORDER_BROADCAST_PORT,
+    DEFAULT_SEQUENCER_HOST,
 };
 
 #[derive(Parser, Debug, Clone)]
@@ -41,8 +41,8 @@ async fn submit_bid(args: &Args, bid: Bid) -> Result<(), Box<dyn std::error::Err
         }
         Err(e) => {
             eprintln!(
-                "[Solver {}] Failed to connect to bid submission port: {}",
-                args.id, e
+                "[Solver {}] Failed to connect to bid submission port: {e}",
+                args.id
             );
             Err(e.into())
         }
@@ -69,8 +69,8 @@ async fn send_fulfillment_claim(
         }
         Err(e) => {
             eprintln!(
-                "[Solver {}] Failed to connect to fulfillment port: {}",
-                args.id, e
+                "[Solver {}] Failed to connect to fulfillment port: {e}",
+                args.id
             );
             Err(e.into())
         }
@@ -90,14 +90,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tokio::spawn(async move {
         loop {
             println!(
-                "[Solver {}] Attempting to connect to sequencer at {} for orders/commitments...",
-                solver_id_clone, order_stream_addr
+                "[Solver {solver_id_clone}] Attempting to connect to sequencer at {order_stream_addr} for orders/commitments..."
             );
             match TcpStream::connect(order_stream_addr.clone()).await {
                 Ok(stream) => {
                     println!(
-                        "[Solver {}] Connected to sequencer for orders/commitments.",
-                        solver_id_clone
+                        "[Solver {solver_id_clone}] Connected to sequencer for orders/commitments."
                     );
                     let (reader, _writer) = stream.into_split(); // _writer not used by solver on this channel
                     let mut buf_reader = BufReader::new(reader);
@@ -107,22 +105,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             &mut buf_reader,
                         )
                         .await
-                        .map_err(|e| format!("Read error: {}", e))
+                        .map_err(|e| format!("Read error: {e}"))
                         {
                             Ok(Some(SequencerToSolverMessage::NewOrderBatch(batch))) => {
                                 println!(
-                                    "[Solver {}] Received new order batch with {} orders.",
-                                    solver_id_clone,
+                                    "[Solver {solver_id_clone}] Received new order batch with {} orders.",
                                     batch.len()
                                 );
                                 for order in batch {
-                                    // simple random logic to decide whether to bid
                                     let mut rng = SmallRng::seed_from_u64(order.id);
-                                    if rng.gen_bool(0.7) {
-                                        // 70% chance to bid on each order
-                                        let max_input = rng.gen_range(50..200); // Random max_input
-                                        let conversion_rate = rng.gen_range(0.8..1.2); // Random rate
-                                        let bid_duration_secs = rng.gen_range(15..60); // How long bid is valid
+                                    if rng.random_bool(0.7) {
+                                        let max_input = rng.random_range(50..200);
+                                        let conversion_rate = rng.random_range(0.8..1.2);
+                                        let bid_duration_secs = rng.random_range(15..60);
 
                                         let bid = Bid {
                                             order_id: order.id,
@@ -133,22 +128,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                 + bid_duration_secs,
                                         };
                                         println!(
-                                            "[Solver {}] Decided to bid on order {}: min_output {}, valid_till {}",
-                                            solver_id_clone,
+                                            "[Solver {solver_id_clone}] Decided to bid on order {}: min_output {}, valid_till {}",
                                             order.id,
                                             bid.min_output(),
                                             bid.valid_till
                                         );
                                         if let Err(e) = submit_bid(&args_clone, bid).await {
                                             eprintln!(
-                                                "[Solver {}] Error submitting bid: {}",
-                                                solver_id_clone, e
+                                                "[Solver {solver_id_clone}] Error submitting bid: {e}"
                                             );
                                         }
                                     } else {
                                         println!(
-                                            "[Solver {}] Decided NOT to bid on order {}.",
-                                            solver_id_clone, order.id
+                                            "[Solver {solver_id_clone}] Decided NOT to bid on order {}.",
+                                            order.id
                                         );
                                     }
                                 }
@@ -158,27 +151,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             ))) => {
                                 if commitment.solver_id == solver_id_clone {
                                     println!(
-                                        "[Solver {}] Received commitment for order {}: {:?}",
-                                        solver_id_clone, commitment.order_id, commitment
+                                        "[Solver {solver_id_clone}] Received commitment for order {}: {:?}",
+                                        commitment.order_id, commitment
                                     );
                                     // simulate work
                                     let work_duration_secs =
-                                        SmallRng::seed_from_u64(commitment.order_id).gen_range(
+                                        SmallRng::seed_from_u64(commitment.order_id).random_range(
                                             1..(commitment.deadline - current_timestamp_secs())
                                                 .max(2)
                                                 - 1,
                                         );
                                     println!(
-                                        "[Solver {}] Working on order {} for {} seconds...",
-                                        solver_id_clone, commitment.order_id, work_duration_secs
+                                        "[Solver {solver_id_clone}] Working on order {} for {work_duration_secs} seconds...",
+                                        commitment.order_id
                                     );
                                     tokio::time::sleep(Duration::from_secs(work_duration_secs))
                                         .await;
 
                                     if current_timestamp_secs() < commitment.deadline {
                                         println!(
-                                            "[Solver {}] Work complete for order {}. Sending fulfillment claim.",
-                                            solver_id_clone, commitment.order_id
+                                            "[Solver {solver_id_clone}] Work complete for order {}. Sending fulfillment claim.",
+                                            commitment.order_id
                                         );
                                         if let Err(e) = send_fulfillment_claim(
                                             &args_clone,
@@ -188,14 +181,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         .await
                                         {
                                             eprintln!(
-                                                "[Solver {}] Error sending fulfillment claim: {}",
-                                                solver_id_clone, e
+                                                "[Solver {solver_id_clone}] Error sending fulfillment claim: {e}"
                                             );
                                         }
                                     } else {
                                         println!(
-                                            "[Solver {}] MISSED DEADLINE for order {} after work. Deadline: {}, Current: {}",
-                                            solver_id_clone,
+                                            "[Solver {solver_id_clone}] MISSED DEADLINE for order {} after work. Deadline: {}, Current: {}",
                                             commitment.order_id,
                                             commitment.deadline,
                                             current_timestamp_secs()
@@ -206,22 +197,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             }
                             Ok(Some(SequencerToSolverMessage::AuctionClosedNoWinner(order_id))) => {
                                 println!(
-                                    "[Solver {}] Received auction closed (no winner) for order {}.",
-                                    solver_id_clone, order_id
+                                    "[Solver {solver_id_clone}] Received auction closed (no winner) for order {order_id}."
                                 );
                             }
                             Ok(None) => {
                                 // connection closed by sequencer
                                 eprintln!(
-                                    "[Solver {}] Sequencer closed the order/commitment connection.",
-                                    solver_id_clone
+                                    "[Solver {solver_id_clone}] Sequencer closed the order/commitment connection."
                                 );
                                 break;
                             }
                             Err(e) => {
                                 eprintln!(
-                                    "[Solver {}] Error reading message from sequencer: {}",
-                                    solver_id_clone, e
+                                    "[Solver {solver_id_clone}] Error reading message from sequencer: {e}"
                                 );
                                 break;
                             }
@@ -230,8 +218,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 Err(e) => {
                     eprintln!(
-                        "[Solver {}] Failed to connect to sequencer at {}: {}. Retrying in 5s...",
-                        solver_id_clone, order_stream_addr, e
+                        "[Solver {solver_id_clone}] Failed to connect to sequencer at {order_stream_addr}: {e}. Retrying in 5s..."
                     );
                 }
             }

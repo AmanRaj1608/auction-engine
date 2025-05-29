@@ -16,7 +16,7 @@ impl ChainLog {
     }
     pub fn log_event(&mut self, event: ChainEvent) {
         // just logging for now
-        println!("[ChainEvent] {:?}", event);
+        println!("[ChainEvent] {event:?}");
         self.events.push(event);
     }
 }
@@ -138,6 +138,12 @@ pub struct AppState {
     pub order_state_manager: Arc<Mutex<OrderStateManager>>,
     pub escrow: Arc<Mutex<InMemoryEscrow>>,
     pub next_order_id: Arc<std::sync::atomic::AtomicU64>,
+}
+
+impl Default for AppState {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl AppState {
@@ -394,7 +400,7 @@ mod tests {
                 std::thread::spawn(move || {
                     let bid = Bid {
                         order_id: 4,
-                        solver_id: format!("solver{}", i),
+                        solver_id: format!("solver{i}"),
                         max_input: 100 + i * 10,
                         conversion_rate: 1.0 + (i as f64 * 0.1),
                         valid_till: current_timestamp_secs() + 60,
