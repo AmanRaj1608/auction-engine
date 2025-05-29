@@ -1,0 +1,13 @@
+[package]
+name = "solver"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+clap = { version = "4.5.3", features = ["derive"] }
+rand = "0.9.1"
+rand_core = "0.9.3"
+tokio = { version = "1.45.1", features = ["full"] }
+
+# workspace dependencies
+runtime = { path = "../runtime" }

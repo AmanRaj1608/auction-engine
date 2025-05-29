@@ -1,0 +1,11 @@
+[package]
+name = "sequencer"
+version.workspace = true
+edition.workspace = true
+
+[dependencies] 
+clap = { version = "4.5.3", features = ["derive"] }
+tokio = { version = "1.45.1", features = ["full"] }
+
+# workspace dependencies
+runtime = { path = "../runtime" }

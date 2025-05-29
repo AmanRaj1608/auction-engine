@@ -1,0 +1,110 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build and Test
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        profile: minimal
+        toolchain: stable
+        override: true
+        components: rustfmt, clippy
+    
+    - name: Cache cargo dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/bin/
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          target/
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-
+    
+    - name: Check formatting
+      run: cargo fmt --all -- --check
+    
+    - name: Run clippy
+      run: cargo clippy --all-targets --all-features -- -D warnings
+    
+    - name: Build
+      run: cargo build --workspace --all-features
+    
+    - name: Build release
+      run: cargo build --workspace --release
+    
+    - name: Run tests
+      run: cargo test --workspace --all-features
+    
+    - name: Check documentation
+      run: cargo doc --workspace --no-deps
+
+  integration-test:
+    name: Integration Test
+    runs-on: ubuntu-latest
+    needs: build
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        profile: minimal
+        toolchain: stable
+        override: true
+    
+    - name: Build release binaries
+      run: cargo build --workspace --release
+    
+    - name: Run integration test
+      run: |
+        # Start sequencer in background
+        ./target/release/sequencer --tick 1 &
+        SEQUENCER_PID=$!
+        echo "Started sequencer with PID: $SEQUENCER_PID"
+        
+        # Give sequencer time to start
+        sleep 2
+        
+        # Start two solvers in background
+        ./target/release/solver --id s1 &
+        SOLVER1_PID=$!
+        echo "Started solver s1 with PID: $SOLVER1_PID"
+        
+        ./target/release/solver --id s2 &
+        SOLVER2_PID=$!
+        echo "Started solver s2 with PID: $SOLVER2_PID"
+        
+        # Let the system run for 30 seconds
+        echo "Running auction system for 30 seconds..."
+        sleep 30
+        
+        # Gracefully shutdown
+        echo "Shutting down..."
+        kill -TERM $SOLVER1_PID $SOLVER2_PID $SEQUENCER_PID 2>/dev/null || true
+        
+        # Give processes time to shutdown
+        sleep 2
+        
+        # Force kill if still running
+        kill -KILL $SOLVER1_PID $SOLVER2_PID $SEQUENCER_PID 2>/dev/null || true
+        
+        echo "Integration test completed" 
